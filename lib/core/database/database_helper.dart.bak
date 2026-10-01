@@ -1,0 +1,10 @@
+// Dans _loadData(), ajouter après les autres chargements :
+
+if (data['barConfig'] != null) {
+  _barConfig = BarConfig.fromJson(data['barConfig']);
+} else {
+  _barConfig = BarConfig();
+}
+
+// Dans _saveData(), ajouter :
+'barConfig': _barConfig.toJson(),

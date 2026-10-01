@@ -1,0 +1,356 @@
+import '../services/supabase_service.dart';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'models/product.dart';
+import '../services/auth_service.dart';
+import 'models/category.dart' as cat_model;
+import 'models/user.dart' as model;
+import 'models/bar_config.dart';
+
+class DatabaseHelper {
+  static final DatabaseHelper _instance = DatabaseHelper._internal();
+  factory DatabaseHelper() => _instance;
+  DatabaseHelper._internal();
+
+  List<Product> _products = [];
+  List<Sale> _sales = [];
+  List<SaleItem> _saleItems = [];
+  List<cat_model.Category> _categories = [];
+  List<model.User> _users = [];
+  BarConfig _barConfig = BarConfig();
+  bool _initialized = false;
+  final List<VoidCallback> _listeners = [];
+
+  void addListener(VoidCallback l) => _listeners.add(l);
+  void removeListener(VoidCallback l) => _listeners.remove(l);
+  void _notify() { for (var l in _listeners) l(); }
+
+  bool get isWeb => true;
+
+  String _storageKey() {
+    final user = AuthService.getCurrentUser();
+    if (user == null) return 'default';
+    if (user.isSuperAdmin) return 'global';
+    if (user.barName != null && user.barName!.isNotEmpty) {
+      return user.barName!.toLowerCase().replaceAll(' ', '_');
+    }
+    return 'default';
+  }
+
+  Future<void> init() async {
+    if (_initialized) return;
+    await _loadData();
+    if (!_initialized) {
+      _createDefaultData();
+      _initialized = true;
+      await _saveData();
+    }
+  }
+
+  void resetForNewUser() {
+    _initialized = false;
+  }
+
+  Future<void> _loadData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final user = AuthService.getCurrentUser();
+      
+      if (user != null && user.isSuperAdmin) {
+        // Superadmin : charger TOUS les bars depuis Supabase
+        try {
+          final allBars = await SupabaseService.getAllBarIds();
+          final allUsers = <model.User>[];
+          for (var barId in allBars) {
+            if (barId == 'global' || barId.startsWith('sub_')) continue;
+            final data = await SupabaseService.loadData(barId);
+            if (data != null && data['users'] != null) {
+              for (var u in (data['users'] as List)) {
+                final user = model.User.fromJson(u);
+                if (!allUsers.any((existing) => existing.username == user.username)) {
+                  allUsers.add(user);
+                }
+              }
+            }
+          }
+          // Aussi charger global
+          try {
+            final globalData = await SupabaseService.loadData('global');
+            if (globalData != null && globalData['users'] != null) {
+              for (var u in (globalData['users'] as List)) {
+                final user = model.User.fromJson(u);
+                if (!allUsers.any((existing) => existing.username == user.username)) {
+                  allUsers.add(user);
+                }
+              }
+            }
+          } catch (e) {}
+
+          if (allUsers.isNotEmpty) {
+            _users = allUsers;
+            _initialized = true;
+            return;
+          }
+        } catch (e) {}
+
+        final keys = prefs.getKeys().where((k) => k.startsWith('barmaster_')).toList();
+        final allUsers = <model.User>[];
+        for (var key in keys) {
+          try {
+            final data = jsonDecode(prefs.getString(key) ?? '');
+            if (data['users'] != null) {
+              final users = (data['users'] as List).map((u) => model.User.fromJson(u)).toList();
+              for (var u in users) {
+                if (!allUsers.any((existing) => existing.id == u.id)) {
+                  allUsers.add(u);
+                }
+              }
+            }
+          } catch (e) {}
+        }
+        _users = allUsers;
+        _initialized = true;
+        return;
+      }
+      
+      // Essayer Supabase d'abord
+      try {
+        final supabaseData = await SupabaseService.loadData(_storageKey());
+        if (supabaseData != null) {
+          if (supabaseData['products'] != null) _products = (supabaseData['products'] as List).map((p) => Product.fromJson(p)).toList();
+          if (supabaseData['sales'] != null) _sales = (supabaseData['sales'] as List).map((s) => Sale.fromJson(s)).toList();
+          if (supabaseData['saleItems'] != null) _saleItems = (supabaseData['saleItems'] as List).map((s) => SaleItem.fromJson(s)).toList();
+          if (supabaseData['users'] != null) _users = (supabaseData['users'] as List).map((u) => model.User.fromJson(u)).toList();
+          if (supabaseData['categories'] != null) _categories = (supabaseData['categories'] as List).map((c) => cat_model.Category.fromJson(c)).toList();
+          if (supabaseData['barConfig'] != null) _barConfig = BarConfig.fromJson(supabaseData['barConfig']);
+          _initialized = true;
+          print('✅ Données Supabase chargées');
+          return;
+        }
+      } catch (e) {}
+
+      // Essayer Supabase d'abord
+      try {
+        final supabaseData = await SupabaseService.loadData(_storageKey());
+        if (supabaseData != null) {
+          if (supabaseData['products'] != null) _products = (supabaseData['products'] as List).map((p) => Product.fromJson(p)).toList();
+          if (supabaseData['sales'] != null) _sales = (supabaseData['sales'] as List).map((s) => Sale.fromJson(s)).toList();
+          if (supabaseData['saleItems'] != null) _saleItems = (supabaseData['saleItems'] as List).map((s) => SaleItem.fromJson(s)).toList();
+          if (supabaseData['users'] != null) _users = (supabaseData['users'] as List).map((u) => model.User.fromJson(u)).toList();
+          if (supabaseData['categories'] != null) _categories = (supabaseData['categories'] as List).map((c) => cat_model.Category.fromJson(c)).toList();
+          if (supabaseData['barConfig'] != null) _barConfig = BarConfig.fromJson(supabaseData['barConfig']);
+          _initialized = true;
+          return;
+        }
+      } catch (e) {}
+
+      final dataString = prefs.getString('barmaster_' + _storageKey()) ?? '';
+      if (dataString.isNotEmpty) {
+        final data = jsonDecode(dataString);
+        if (data['products'] != null) _products = (data['products'] as List).map((p) => Product.fromJson(p)).toList();
+        if (data['sales'] != null) _sales = (data['sales'] as List).map((s) => Sale.fromJson(s)).toList();
+        if (data['saleItems'] != null) _saleItems = (data['saleItems'] as List).map((s) => SaleItem.fromJson(s)).toList();
+        if (data['users'] != null) _users = (data['users'] as List).map((u) => model.User.fromJson(u)).toList();
+        if (data['categories'] != null) _categories = (data['categories'] as List).map((c) => cat_model.Category.fromJson(c)).toList();
+        if (data['barConfig'] != null) _barConfig = BarConfig.fromJson(data['barConfig']);
+        _initialized = true;
+      }
+    } catch (e) {}
+  }
+
+  Future<void> _saveData() async {
+    final data = {
+      'products': _products.map((p) => p.toJson()).toList(),
+      'sales': _sales.map((s) => s.toJson()).toList(),
+      'saleItems': _saleItems.map((s) => s.toJson()).toList(),
+      'users': _users.map((u) => u.toJson()).toList(),
+      'categories': _categories.map((c) => c.toJson()).toList(),
+      'barConfig': _barConfig.toJson(),
+    };
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('barmaster_' + _storageKey(), jsonEncode(data));
+    
+    // ✅ Synchroniser vers Supabase
+    try {
+      final user = AuthService.getCurrentUser();
+      if (user != null) {
+        await SupabaseService.saveData(_storageKey(), data);
+        print('📤 Synchro envoyée: ' + _storageKey());
+      }
+    } catch (e) {
+      print('⚠️ Synchro Supabase: $e');
+    }
+    
+    _notify();
+  }
+
+  void _createDefaultData() {
+    int now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    _categories = [
+      cat_model.Category(id: 1, name: 'Bières', icon: '🍺', color: '#F59E0B'),
+      cat_model.Category(id: 2, name: 'Sodas', icon: '🥤', color: '#3B82F6'),
+      cat_model.Category(id: 3, name: 'Spiritueux', icon: '🥃', color: '#EF4444'),
+    ];
+    _products = [
+      Product(id: 1, name: 'Heineken', categoryId: 1, purchasePrice: 600, sellingPrice: 1000, minStockThreshold: 10, currentStock: 25, unit: 'bouteille'),
+      Product(id: 2, name: 'Castel', categoryId: 1, purchasePrice: 450, sellingPrice: 800, minStockThreshold: 15, currentStock: 30, unit: 'bouteille'),
+      Product(id: 3, name: 'Coca-Cola', categoryId: 2, purchasePrice: 350, sellingPrice: 600, minStockThreshold: 20, currentStock: 5, unit: 'canette'),
+      Product(id: 4, name: 'Fanta Orange', categoryId: 2, purchasePrice: 350, sellingPrice: 600, minStockThreshold: 15, currentStock: 12, unit: 'canette'),
+      Product(id: 5, name: 'Whisky', categoryId: 3, purchasePrice: 5000, sellingPrice: 8500, minStockThreshold: 5, currentStock: 3, unit: 'bouteille'),
+    ];
+    _users = [
+      model.User(id: 0, username: 'superadmin', password: 'superadmin123', fullName: 'Super Admin', role: 'superadmin', createdAt: now),
+    ];
+  }
+
+  List<Product> getAllProducts() => List.from(_products);
+  List<Sale> getAllSales() => List.from(_sales);
+  List<SaleItem> getAllSaleItems() => List.from(_saleItems);
+  List<cat_model.Category> getAllCategories() => List.from(_categories);
+  List<model.User> getAllUsers() => List.from(_users);
+  BarConfig getBarConfig() => _barConfig;
+
+  Product? getProductById(int id) { try { return _products.firstWhere((p) => p.id == id); } catch (_) { return null; } }
+  Product? getProductByName(String name) { try { return _products.firstWhere((p) => p.name.toLowerCase() == name.toLowerCase()); } catch (_) { return null; } }
+  List<Product> getLowStockProducts() => _products.where((p) => p.currentStock <= p.minStockThreshold).toList();
+
+  void addStockToProduct(String name, int qty, double price, int catId) {
+    final exist = getProductByName(name);
+    if (exist != null) { exist.currentStock += qty; }
+    else {
+      int id = _products.isEmpty ? 1 : _products.map((p) => p.id).reduce((a, b) => a > b ? a : b) + 1;
+      _products.add(Product(id: id, name: name, categoryId: catId, purchasePrice: price, sellingPrice: price * 1.5, minStockThreshold: 10, currentStock: qty, unit: 'unité'));
+    }
+    _saveData();
+  }
+
+  void updateProductStock(int id, int newStock) {
+    final p = getProductById(id);
+    if (p != null) { p.currentStock = newStock; _saveData(); }
+  }
+
+  void createSale({required String ticketNumber, required double totalAmount, required String paymentMethod, required List<Map<String, dynamic>> items}) {
+    int now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    int saleId = _sales.isEmpty ? 1 : _sales.map((s) => s.id).reduce((a, b) => a > b ? a : b) + 1;
+    final user = AuthService.getCurrentUser();
+    _sales.add(Sale(id: saleId, ticketNumber: ticketNumber, totalAmount: totalAmount, saleDate: now, paymentMethod: paymentMethod, barName: user?.barName ?? '', cashierName: user?.fullName ?? ''));
+    int itemId = _saleItems.isEmpty ? 1 : _saleItems.map((s) => s.id).reduce((a, b) => a > b ? a : b) + 1;
+    for (var item in items) {
+      _saleItems.add(SaleItem(id: itemId++, saleId: saleId, productId: item['productId'], quantity: item['quantity'], unitPrice: item['unitPrice'], totalPrice: item['total']));
+      final p = getProductById(item['productId']);
+      if (p != null) p.currentStock -= (item['quantity'] as int);
+    }
+    _saveData();
+    print('🛒 Vente: $ticketNumber - $totalAmount FCFA');
+  }
+
+  List<Sale> getTodaySales() {
+    int start = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day).millisecondsSinceEpoch ~/ 1000;
+    return _sales.where((s) => s.saleDate >= start).toList();
+  }
+
+  List<SaleItem> getSaleItems(int saleId) => _saleItems.where((s) => s.saleId == saleId).toList();
+
+  Future<bool> cancelSale(int saleId) async {
+    for (var item in _saleItems.where((s) => s.saleId == saleId)) {
+      final p = getProductById(item.productId);
+      if (p != null) p.currentStock += item.quantity;
+    }
+    _saleItems.removeWhere((s) => s.saleId == saleId);
+    _sales.removeWhere((s) => s.id == saleId);
+    _saveData();
+    return true;
+  }
+
+  void addCategory(String name, String icon, String color) {
+    int id = _categories.isEmpty ? 1 : _categories.map((c) => c.id).reduce((a, b) => a > b ? a : b) + 1;
+    _categories.add(cat_model.Category(id: id, name: name, icon: icon, color: color));
+    _saveData();
+  }
+
+  void updateCategory(int id, String name, String icon, String color) {
+    int i = _categories.indexWhere((c) => c.id == id);
+    if (i != -1) { _categories[i].name = name; _categories[i].icon = icon; _categories[i].color = color; _saveData(); }
+  }
+
+  void deleteCategory(int id) { _categories.removeWhere((c) => c.id == id); _saveData(); }
+
+  String? addUser(String username, String password, String fullName, String role, {String? barName, String? barAddress, String? barPhone}) {
+    if (role == 'caissier' || role == 'serveur') {
+      final sameRole = _users.where((u) => u.role == role && u.barName == barName).length;
+      if (sameRole >= 1) return '❌ Un seul  autorisé par bar';
+    }
+    int id = _users.isEmpty ? 1 : _users.map((u) => u.id).reduce((a, b) => a > b ? a : b) + 1;
+    _users.add(model.User(id: id, username: username, password: password, fullName: fullName, role: role, createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000, barName: barName, barAddress: barAddress, barPhone: barPhone));
+    // Sauvegarder avec la clé du barName (pas de l'utilisateur courant)
+    _saveData();
+    // Sauvegarder aussi avec la clé du barName
+    _notify();
+    print('👤 Utilisateur ajouté: $username - Bar: $barName');
+    return null;
+  }
+
+  void updateUser(int id, {String? fullName, String? role, bool? isActive, String? barName}) {
+    int i = _users.indexWhere((u) => u.id == id);
+    if (i != -1) {
+      if (fullName != null) _users[i].fullName = fullName;
+      if (role != null) _users[i].role = role;
+      if (isActive != null) _users[i].isActive = isActive;
+      if (barName != null) _users[i].barName = barName;
+      _saveData();
+    }
+  }
+
+  void deleteUser(int id) {
+    if (id <= 1) return;
+    _users.removeWhere((u) => u.id == id);
+    _saveData();
+  }
+
+  void updateBarConfig({required String name, required String address, required String phone, required String email, required String slogan, required String manager}) {
+    _barConfig.name = name;
+    _barConfig.address = address;
+    _barConfig.phone = phone;
+    _barConfig.email = email;
+    _barConfig.slogan = slogan;
+    _barConfig.manager = manager;
+    _saveData();
+  }
+
+  Future<void> loadFromSupabase() async {
+    try {
+      final data = await SupabaseService.loadData(_storageKey());
+      if (data != null) {
+        if (data['products'] != null) _products = (data['products'] as List).map((p) => Product.fromJson(p)).toList();
+        if (data['sales'] != null) _sales = (data['sales'] as List).map((s) => Sale.fromJson(s)).toList();
+        if (data['saleItems'] != null) _saleItems = (data['saleItems'] as List).map((s) => SaleItem.fromJson(s)).toList();
+        if (data['users'] != null) _users = (data['users'] as List).map((u) => model.User.fromJson(u)).toList();
+        if (data['categories'] != null) _categories = (data['categories'] as List).map((c) => cat_model.Category.fromJson(c)).toList();
+        if (data['barConfig'] != null) _barConfig = BarConfig.fromJson(data['barConfig']);
+        _notify();
+        print('✅ Données Supabase chargées');
+      }
+    } catch (e) {
+      print('❌ Chargement Supabase: $e');
+    }
+  }
+  Future<void> syncWithSupabase() async { await _saveData(); }
+  Future<void> syncPendingData() async { await _saveData(); }
+  bool hasPendingSync() => false;
+  Future<void> saveAndSync() async { await _saveData(); }
+
+  Map<String, dynamic> getTodayStats() {
+    final today = getTodaySales();
+    final critical = _products.where((p) => p.currentStock == 0).length;
+    final warning = _products.where((p) => p.currentStock > 0 && p.currentStock <= p.minStockThreshold).length;
+    return {
+      'totalSalesToday': today.fold(0.0, (sum, s) => sum + s.totalAmount),
+      'count': today.length,
+      'criticalCount': critical,
+      'warningCount': warning,
+      'totalProducts': _products.length,
+      'totalStockValue': _products.fold(0.0, (sum, p) => sum + (p.currentStock * p.sellingPrice)),
+    };
+  }
+}
