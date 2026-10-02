@@ -10,6 +10,7 @@ class PrintService {
   static Future<bool> connectBluetooth(String address) async {
     try {
       _connection = await BluetoothConnection.toAddress(address);
+       await Future.delayed(const Duration(seconds: 2));
       _bluetoothConnected = true;
       print('✅ Connecté à l\'imprimante Bluetooth');
       return true;
@@ -61,7 +62,7 @@ class PrintService {
 
     try {
       final profile = await CapabilityProfile.load();
-      final generator = Generator(PaperSize.mm80, profile);
+      final generator = Generator(PaperSize.mm58, profile);
 
       List<int> bytes = [];
       bytes.addAll(generator.reset());

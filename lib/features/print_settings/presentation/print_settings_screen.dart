@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 import '../../../core/services/print_service.dart';
 import '../../../shared/theme/app_theme.dart';
@@ -36,13 +37,22 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
   void initState() {
     super.initState();
     _loadSavedMode();
+  }
+
+  Future<void> _loadSavedMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedMode = prefs.getString('print_mode') ?? 'pdf';
+    setState(() {
+      _selectedMode = savedMode;
+    });
     if (_selectedMode == 'bluetooth') {
       _loadDevices();
     }
   }
 
-  void _loadSavedMode() {
-    _selectedMode = 'pdf';
+  Future<void> _saveMode(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('print_mode', mode);
   }
 
   Future<void> _loadDevices() async {
@@ -156,6 +166,7 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
                         onChanged: (value) {
                           setState(() {
                             _selectedMode = value!;
+                            _saveMode(value);
                           });
                           if (mode == 'bluetooth') {
                             _loadDevices();
@@ -244,6 +255,40 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
                         icon: const Icon(Icons.refresh),
                         label: const Text('Rafraîchir la liste'),
                       ),
+                      const SizedBox(height: 12),
+                      if (_isConnected)
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              await PrintService.printBluetooth(
+                                ticketNumber: 'TEST-001',
+                                date: DateTime.now().toString().substring(0, 19),
+                                paymentMethod: 'Test',
+                                total: 1000,
+                                items: [
+                                  {'name': 'Article Test', 'quantity': 2, 'total': 1000.0}
+                                ],
+                                shopName: 'BARMASTER TEST',
+                                shopPhone: '0102030405',
+                                shopAddress: 'Adresse de test',
+                                shopSlogan: 'Test impression',
+                              );
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('✅ Test envoyé à l imprimante')),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.print, color: Colors.black),
+                            label: const Text('TESTER L IMPRESSION', style: TextStyle(fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.all(14),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
