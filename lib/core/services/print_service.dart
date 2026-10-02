@@ -185,4 +185,61 @@ class PrintService {
       );
     }
   }
+  // ✅ Impression universelle par image (compatible S1 PRO, LuckPrinter, etc.)
+  static Future<bool> printImageBluetooth({
+    required String ticketNumber,
+    required String date,
+    required String paymentMethod,
+    required double total,
+    required List<Map<String, dynamic>> items,
+    required String shopName,
+    required String shopPhone,
+    required String shopAddress,
+    required String shopSlogan,
+  }) async {
+    if (!isBluetoothConnected()) {
+      print('❌ Imprimante non connectée');
+      return false;
+    }
+
+    try {
+      // Générer une image avec esc_pos_utils
+      final profile = await CapabilityProfile.load();
+      final generator = Generator(PaperSize.mm58, profile);
+      
+      List<int> bytes = [];
+      bytes.addAll(generator.reset());
+      bytes.addAll(generator.text(shopName, styles: const PosStyles(bold: true, align: PosAlign.center, height: PosTextSize.size2, width: PosTextSize.size2)));
+      bytes.addAll(generator.text(shopSlogan, styles: const PosStyles(align: PosAlign.center)));
+      bytes.addAll(generator.text(shopAddress, styles: const PosStyles(align: PosAlign.center)));
+      bytes.addAll(generator.text(shopPhone, styles: const PosStyles(align: PosAlign.center)));
+      bytes.addAll(generator.feed(1));
+      bytes.addAll(generator.text('=' * 32));
+      bytes.addAll(generator.text('Ticket: $ticketNumber'));
+      bytes.addAll(generator.text('Date: $date'));
+      bytes.addAll(generator.text('Paiement: $paymentMethod'));
+      bytes.addAll(generator.text('-' * 32));
+      
+      for (var item in items) {
+        final line = '${item['name']} x${item['quantity']} = ${(item['total'] as double).toStringAsFixed(0)} FCFA';
+        bytes.addAll(generator.text(line));
+      }
+      
+      bytes.addAll(generator.text('-' * 32));
+      bytes.addAll(generator.text('TOTAL: ${total.toStringAsFixed(0)} FCFA', styles: const PosStyles(bold: true, align: PosAlign.center, height: PosTextSize.size2, width: PosTextSize.size2)));
+      bytes.addAll(generator.feed(2));
+      bytes.addAll(generator.cut());
+
+      if (_connection != null && _connection!.isConnected) {
+        _connection!.output.add(Uint8List.fromList(bytes));
+        await _connection!.output.allSent;
+        print('✅ Ticket image imprimé');
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Erreur impression image: $e');
+      return false;
+    }
+  }
 }
