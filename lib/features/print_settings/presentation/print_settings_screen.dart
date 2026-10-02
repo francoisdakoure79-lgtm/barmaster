@@ -261,7 +261,7 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             onPressed: () async {
-                              await PrintService.printBluetooth(
+                              await PrintService.printImageBluetooth(
                                 ticketNumber: 'TEST-001',
                                 date: DateTime.now().toString().substring(0, 19),
                                 paymentMethod: 'Test',
