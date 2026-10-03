@@ -3,6 +3,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/database/database_helper.dart';
 import '../../../core/database/models/product.dart';
 import '../../../core/services/print_service.dart';
+import '../../../core/services/s1pro_print_service.dart';
+import '../../../core/services/universal_print_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../shared/theme/app_theme.dart';
 
@@ -190,12 +193,40 @@ class _SaleScreenState extends State<SaleScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('FERMER')),
           ElevatedButton.icon(
-            onPressed: () {
-              PrintService.printTicket(ticketNumber: ticketNumber, date: date, paymentMethod: _selectedPaymentMethod, total: total,
-                items: cart.map((item) => {'name': item['name'], 'quantity': item['quantity'], 'total': item['total']}).toList(),
-                shopName: user?.barName ?? 'BARMASTER', shopPhone: user?.barPhone ?? '',
-                shopAddress: user?.barAddress ?? '', shopSlogan: user?.barEmail ?? '', printMode: _printMode);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Impression lancée')));
+            onPressed: () async {
+              final items = cart.map((item) => {'name': item['name'], 'quantity': item['quantity'], 'total': item['total']}).toList();
+              bool success = false;
+
+              // Lire le mode sauvegardé
+              final prefs = await SharedPreferences.getInstance();
+              final mode = prefs.getString('print_mode') ?? 'pdf';
+
+              if (mode == 'bluetooth_ble_s1pro' || mode == 'bluetooth_ble_espos') {
+                final bytes = await UniversalPrintService.generateS1ProBytes(
+                  ticketNumber: ticketNumber, date: date, paymentMethod: _selectedPaymentMethod,
+                  total: total, items: items,
+                  shopName: user?.barName ?? 'BARMASTER', shopPhone: user?.barPhone ?? '',
+                  shopAddress: user?.barAddress ?? '', shopSlogan: user?.barEmail ?? '',
+                );
+                success = await S1ProPrintService.printBytes(bytes);
+              } else {
+                success = await PrintService.printTicket(
+                  ticketNumber: ticketNumber, date: date, paymentMethod: _selectedPaymentMethod,
+                  total: total, items: items,
+                  shopName: user?.barName ?? 'BARMASTER', shopPhone: user?.barPhone ?? '',
+                  shopAddress: user?.barAddress ?? '', shopSlogan: user?.barEmail ?? '',
+                  printMode: mode,
+                );
+              }
+
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(success ? '✅ Impression envoyée' : '⚠️ Impression terminée'),
+                    backgroundColor: success ? Colors.green : Colors.grey,
+                  ),
+                );
+              }
             },
             icon: const Icon(Icons.print, color: Colors.white),
             label: const Text('IMPRESSION', style: TextStyle(color: Colors.white)),
