@@ -6,6 +6,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   app_links
   charset_converter
   connectivity_plus
+  flutter_blue_plus_winrt
   url_launcher_windows
 )
 

@@ -100,7 +100,7 @@ class _UsersScreenState extends State<UsersScreen> {
     }
 
     if (_editingId != null) {
-      _db.updateUser(_editingId!, fullName, _selectedRole, true);
+      _db.updateUser(_editingId!, fullName: fullName, role: _selectedRole, isActive: true);
       if (password.isNotEmpty) {
         _db.updateUserPassword(_editingId!, password);
       }

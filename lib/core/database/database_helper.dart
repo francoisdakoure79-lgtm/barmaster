@@ -7,6 +7,7 @@ import '../services/auth_service.dart';
 import 'models/category.dart' as cat_model;
 import 'models/user.dart' as model;
 import 'models/bar_config.dart';
+import 'models/subscription.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -18,6 +19,7 @@ class DatabaseHelper {
   List<SaleItem> _saleItems = [];
   List<cat_model.Category> _categories = [];
   List<model.User> _users = [];
+  List<Subscription> _allSubscriptions = [];
   BarConfig _barConfig = BarConfig();
   bool _initialized = false;
   final List<VoidCallback> _listeners = [];
@@ -353,4 +355,28 @@ class DatabaseHelper {
       'totalStockValue': _products.fold(0.0, (sum, p) => sum + (p.currentStock * p.sellingPrice)),
     };
   }
+
+  // ========== MÉTHODES MANQUANTES ==========
+  
+  Future<void> saveBarConfig(BarConfig config) async {
+    _barConfig = config;
+    await _saveData();
+  }
+
+  void updateUserPassword(int id, String newPassword) {
+    int i = _users.indexWhere((u) => u.id == id);
+    if (i != -1) {
+      _users[i].password = newPassword;
+      _saveData();
+    }
+  }
+
+  List<Subscription> getAllSubscriptions() {
+    return List.from(_allSubscriptions);
+  }
+
+  void updateSubscription(int id, dynamic subscription) {}
+  void addSubscription(dynamic subscription) {}
+  void deleteSubscription(int id) {}
+
 }
