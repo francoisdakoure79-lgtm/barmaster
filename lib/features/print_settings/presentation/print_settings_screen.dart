@@ -1,7 +1,9 @@
+import 'package:flutter_blue_plus/flutter_blue_plus.dart' as ble;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 import '../../../core/services/print_service.dart';
+import '../../../core/services/s1pro_print_service.dart';
 import '../../../shared/theme/app_theme.dart';
 
 class PrintSettingsScreen extends StatefulWidget {
@@ -20,17 +22,23 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
 
   final List<String> _printModes = [
     'pdf',
-    'bluetooth',
+    'bluetooth_classic',
+    'bluetooth_ble_s1pro',
+    'bluetooth_ble_espos',
   ];
 
   final Map<String, String> _modeLabels = {
     'pdf': '📄 PDF',
-    'bluetooth': '🖨️ Bluetooth',
+    'bluetooth_classic': '🖨️ Bluetooth Classique (SPP)',
+    'bluetooth_ble_s1pro': '🖨️ Bluetooth BLE - S1 PRO / LuckPrinter',
+    'bluetooth_ble_espos': '🖨️ Bluetooth BLE - ESC/POS',
   };
 
   final Map<String, String> _modeDescriptions = {
     'pdf': 'Génère un ticket en PDF (téléchargement ou impression)',
-    'bluetooth': 'Imprime sur une imprimante thermique Bluetooth',
+    'bluetooth_classic': 'Imprimante ESC/POS standard (Xprinter, Goojprt...)',
+    'bluetooth_ble_s1pro': 'Imprimante S1 PRO / PPS1 (protocole LuckPrinter)',
+    'bluetooth_ble_espos': 'Imprimante BLE compatible ESC/POS',
   };
 
   @override
@@ -45,7 +53,7 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
     setState(() {
       _selectedMode = savedMode;
     });
-    if (_selectedMode == 'bluetooth') {
+    if (_selectedMode.startsWith('bluetooth')) {
       _loadDevices();
     }
   }
@@ -55,12 +63,18 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
     await prefs.setString('print_mode', mode);
   }
 
+  List<ble.ScanResult> _bleDevices = [];
+
   Future<void> _loadDevices() async {
     setState(() {
       _isScanning = true;
     });
     try {
-      _devices = await PrintService.getPairedDevices();
+      if (_selectedMode == 'bluetooth_classic') {
+        _devices = await PrintService.getPairedDevices();
+      } else if (_selectedMode.startsWith('bluetooth_ble')) {
+        _bleDevices = await S1ProPrintService.scanDevices();
+      }
     } catch (e) {
       print('❌ Erreur: $e');
     }
@@ -74,7 +88,12 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
       _isScanning = true;
     });
     try {
-      final success = await PrintService.connectBluetooth(address);
+      bool success = false;
+      if (_selectedMode == 'bluetooth_classic') {
+        success = await PrintService.connectBluetooth(address);
+      } else if (_selectedMode.startsWith('bluetooth_ble')) {
+        success = await S1ProPrintService.connect(address);
+      }
       setState(() {
         _isConnected = success;
         _selectedDevice = address;
@@ -181,7 +200,7 @@ class _PrintSettingsScreenState extends State<PrintSettingsScreen> {
 
             const SizedBox(height: 16),
 
-            if (_selectedMode == 'bluetooth') ...[
+            if (_selectedMode.startsWith('bluetooth')) ...[
               Card(
                 color: AppTheme.cardBackground,
                 child: Padding(
