@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter_bluetooth_serial_plus/flutter_bluetooth_serial_plus.dart';
 import 'package:esc_pos_printer/esc_pos_printer.dart';
@@ -239,6 +240,19 @@ class PrintService {
       return false;
     } catch (e) {
       print('❌ Erreur impression image: $e');
+      return false;
+    }
+  }
+
+  // Test : envoyer du texte brut
+  static Future<bool> printRawText(String text) async {
+    if (_connection == null || !_connection!.isConnected) return false;
+    try {
+      final bytes = Uint8List.fromList(utf8.encode(text));
+      _connection!.output.add(bytes);
+      await _connection!.output.allSent;
+      return true;
+    } catch (e) {
       return false;
     }
   }
