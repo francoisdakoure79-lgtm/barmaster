@@ -34,6 +34,7 @@ dependencies:
   share_plus: ^13.3.1
   screenshot: ^3.0.0
   pdf: ^3.8.4
+  universal_html: ^2.3.0
 
 dev_dependencies:
   flutter_test:
