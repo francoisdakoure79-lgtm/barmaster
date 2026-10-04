@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/database/database_helper.dart';
 import '../../../core/database/models/product.dart';
 import '../../../core/services/print_service.dart';
+import '../../../core/services/pdf_ticket_service.dart';
 import '../../../core/services/s1pro_print_service.dart';
 import '../../../core/services/universal_print_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -232,7 +233,22 @@ class _SaleScreenState extends State<SaleScreen> {
             label: const Text('IMPRESSION', style: TextStyle(color: Colors.white)),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
           ),
-          // ✅ Bouton WhatsApp sur le ticket
+          // ✅ Bouton PARTAGER (vers S1 Pro ou autre app)
+          ElevatedButton.icon(
+            onPressed: () async {
+              final items = cart.map((item) => {'name': item['name'], 'quantity': item['quantity'], 'total': item['total']}).toList();
+              await PdfTicketService.shareTicketPdf(
+                ticketNumber: ticketNumber, date: date, paymentMethod: _selectedPaymentMethod,
+                total: total, items: items,
+                shopName: user?.barName ?? 'BARMASTER', shopPhone: user?.barPhone ?? '',
+                shopAddress: user?.barAddress ?? '', shopSlogan: user?.barEmail ?? '',
+              );
+            },
+            icon: const Icon(Icons.share, color: Colors.white),
+            label: const Text('PARTAGER', style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+          ),
+          // ✅ Bouton WHATSAPP sur le ticket
           if (_clientPhone.isNotEmpty)
             ElevatedButton.icon(
               onPressed: () => _sendWhatsAppTicket(ticketNumber, date, cart, total),

@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   
-  path_provider: ^2.1.0
+  path_provider: ^2.1.6
   intl: ^0.18.0
   
   # Bluetooth
@@ -31,6 +31,9 @@ dependencies:
   image: ^3.3.0
   flutter_blue_plus: ^2.3.14
   dio: ^5.11.1
+  share_plus: ^13.3.1
+  screenshot: ^3.0.0
+  pdf: ^3.8.4
 
 dev_dependencies:
   flutter_test:
